@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: notificaciones-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:29092}
+    consumer:
+      group-id: notificaciones
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+        # El productor (bff-atm) envia su propia clase; se mapea al record local
+        spring.json.value.default.type: com.bancoxyz.notificaciones.model.RetiroEvent
+        spring.json.use.type.headers: false
+
+server:
+  port: 8090
+
+notificaciones:
+  topico: banco.retiros
+  monto-alerta: 1000   # retiros de este monto o superior generan alerta antifraude
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

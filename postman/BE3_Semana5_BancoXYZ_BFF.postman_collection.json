@@ -1,0 +1,382 @@
+{
+  "info": {
+    "name": "BE3 - Semana 5 - Banco XYZ BFF",
+    "description": "Colección para verificar la autenticación y autorización por canal del proyecto BFF del Banco XYZ (Exp2-S5, Benjamín Che).\n\nUSO:\n1) En Postman: Settings → General → 'SSL certificate verification' = OFF (los BFF usan HTTPS con certificado autofirmado).\n2) Ejecuta primero 'Autenticar' de cada canal: el token se guarda solo en las variables de la colección (token_web / token_movil / token_atm).\n3) Las demás peticiones ya vienen configuradas con Bearer Token apuntando a esas variables.\n4) La carpeta 'Seguridad - Autorización' contiene las pruebas negativas: sin token, tokens cruzados entre canales y token alterado. Deben responder 401/403 (tests en verde).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_web", "value": "https://localhost:8443" },
+    { "key": "base_movil", "value": "https://localhost:8444" },
+    { "key": "base_atm", "value": "https://localhost:8445" },
+    { "key": "token_web", "value": "" },
+    { "key": "token_movil", "value": "" },
+    { "key": "token_atm", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "BFF Web (8443)",
+      "item": [
+        {
+          "name": "Autenticar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Login WEB 200 OK', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test('Canal emisor es WEB', () => pm.expect(data.channel).to.eql('WEB'));",
+                  "pm.collectionVariables.set('token_web', data.accessToken);",
+                  "console.log('Token WEB guardado en la colección');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"usuario.web\",\n  \"password\": \"web123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_web}}/auth/login", "host": ["{{base_web}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Obtener Cuentas (completas)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('200 OK con ROLE_WEB', () => pm.response.to.have.status(200));"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_web}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{base_web}}/api/web/cuentas", "host": ["{{base_web}}"], "path": ["api", "web", "cuentas"] }
+          }
+        },
+        {
+          "name": "Obtener Cuenta 101 (detalle completo)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Incluye movimientos y estado anual', () => {",
+                  "  const c = pm.response.json();",
+                  "  pm.expect(c).to.have.property('movimientos');",
+                  "  pm.expect(c).to.have.property('estadoAnual');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_web}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{base_web}}/api/web/cuentas/101", "host": ["{{base_web}}"], "path": ["api", "web", "cuentas", "101"] }
+          }
+        },
+        {
+          "name": "Obtener Transacciones",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_web}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{base_web}}/api/web/transacciones", "host": ["{{base_web}}"], "path": ["api", "web", "transacciones"] }
+          }
+        },
+        {
+          "name": "Dashboard (agregados)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_web}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{base_web}}/api/web/dashboard", "host": ["{{base_web}}"], "path": ["api", "web", "dashboard"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "BFF Móvil (8444)",
+      "item": [
+        {
+          "name": "Autenticar",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Login MOBILE 200 OK', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test('Canal emisor es MOBILE', () => pm.expect(data.channel).to.eql('MOBILE'));",
+                  "pm.collectionVariables.set('token_movil', data.accessToken);",
+                  "console.log('Token MOBILE guardado en la colección');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"usuario.movil\",\n  \"password\": \"movil123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_movil}}/auth/login", "host": ["{{base_movil}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Obtener Cuentas (ligeras, paginadas)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK con ROLE_MOBILE', () => pm.response.to.have.status(200));",
+                  "pm.test('Máximo 5 elementos (tope móvil)', () => pm.expect(pm.response.json().length).to.be.at.most(5));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_movil}}", "type": "string" }] },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_movil}}/api/mobile/cuentas?page=0&size=3",
+              "host": ["{{base_movil}}"],
+              "path": ["api", "mobile", "cuentas"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "3" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Obtener Cuenta 101 (mínima)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_movil}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{base_movil}}/api/mobile/cuentas/101", "host": ["{{base_movil}}"], "path": ["api", "mobile", "cuentas", "101"] }
+          }
+        },
+        {
+          "name": "Resumen (home de la app)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_movil}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{base_movil}}/api/mobile/resumen", "host": ["{{base_movil}}"], "path": ["api", "mobile", "resumen"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "BFF Cajeros ATM (8445)",
+      "item": [
+        {
+          "name": "Autenticar (cajero atm-001)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Login ATM 200 OK', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test('Canal emisor es ATM', () => pm.expect(data.channel).to.eql('ATM'));",
+                  "pm.test('Token de vida corta (300 s)', () => pm.expect(data.expiresInSeconds).to.eql(300));",
+                  "pm.collectionVariables.set('token_atm', data.accessToken);",
+                  "console.log('Token ATM guardado (expira en 5 minutos)');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"atm-001\",\n  \"password\": \"atm123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_atm}}/auth/login", "host": ["{{base_atm}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Consultar Saldo cuenta 101",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('200 OK con ROLE_ATM', () => pm.response.to.have.status(200));"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_atm}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{base_atm}}/api/atm/cuentas/101/saldo", "host": ["{{base_atm}}"], "path": ["api", "atm", "cuentas", "101", "saldo"] }
+          }
+        },
+        {
+          "name": "Retirar 500 (persistente)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Retiro aceptado 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Entrega comprobante y saldo restante', () => {",
+                  "  const r = pm.response.json();",
+                  "  pm.expect(r).to.have.property('comprobante');",
+                  "  pm.expect(r).to.have.property('saldoRestante');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_atm}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"monto\": 500\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_atm}}/api/atm/cuentas/101/retiro", "host": ["{{base_atm}}"], "path": ["api", "atm", "cuentas", "101", "retiro"] }
+          }
+        },
+        {
+          "name": "Retiro rechazado (supera tope)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Rechazado con 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Motivo: SUPERA_TOPE_2000', () => pm.expect(pm.response.json().motivo).to.include('SUPERA_TOPE'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_atm}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"monto\": 999999\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_atm}}/api/atm/cuentas/101/retiro", "host": ["{{base_atm}}"], "path": ["api", "atm", "cuentas", "101", "retiro"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Seguridad - Autorización (pruebas negativas)",
+      "item": [
+        {
+          "name": "Sin token → rechazado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('Rechazado sin token (401/403)', () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_web}}/api/web/cuentas", "host": ["{{base_web}}"], "path": ["api", "web", "cuentas"] }
+          }
+        },
+        {
+          "name": "Token MÓVIL contra BFF ATM → rechazado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('Aislamiento de canal: token MOBILE rechazado en ATM (401/403)', () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_movil}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{base_atm}}/api/atm/cuentas/101/saldo", "host": ["{{base_atm}}"], "path": ["api", "atm", "cuentas", "101", "saldo"] }
+          }
+        },
+        {
+          "name": "Token ATM contra BFF Web → rechazado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('Aislamiento de canal: token ATM rechazado en WEB (401/403)', () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_atm}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{base_web}}/api/web/dashboard", "host": ["{{base_web}}"], "path": ["api", "web", "dashboard"] }
+          }
+        },
+        {
+          "name": "Token alterado → rechazado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('Firma inválida rechazada (401/403)', () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "token-falso-manipulado", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{base_movil}}/api/mobile/resumen", "host": ["{{base_movil}}"], "path": ["api", "mobile", "resumen"] }
+          }
+        }
+      ]
+    }
+  ]
+}

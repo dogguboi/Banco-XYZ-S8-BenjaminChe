@@ -1,0 +1,157 @@
+spring:
+  application:
+    name: banco-xyz-batch
+
+  # Perfil activo por defecto: "demo" (H2 en archivo, cero instalación) para
+  # poder ejecutar el proyecto y generar evidencia rápidamente.
+  # Para la entrega con base de datos relacional real usar:
+  #   --spring.profiles.active=oracle    (elegido para este proyecto: Oracle Cloud con Wallet)
+  #   --spring.profiles.active=mysql     (alternativa, también soportada)
+  #   --spring.profiles.active=postgres  (alternativa, también soportada)
+  profiles:
+    active: demo
+
+  batch:
+    job:
+      # No auto-ejecutar todos los jobs al levantar el contexto; los lanzamos
+      # explícitamente por nombre (ver README, sección "Cómo ejecutar").
+      enabled: false
+    jdbc:
+      # Spring Batch crea automáticamente sus tablas de metadata
+      # (BATCH_JOB_INSTANCE, BATCH_STEP_EXECUTION, etc.)
+      initialize-schema: always
+
+app:
+  batch:
+    chunk-size: 50
+    reintentos-maximos: 3
+    saltos-maximos: 20
+    umbral-anomalia: 300000
+    backoff:
+      intervalo-inicial-ms: 200
+      multiplicador: 2.0
+      intervalo-maximo-ms: 2000
+    hilos:
+      core: 4
+      max: 8
+    particiones: 4
+  archivos:
+    transacciones: classpath:data/transacciones.csv
+    intereses: classpath:data/intereses.csv
+    cuentas-anuales: classpath:data/cuentas_anuales.csv
+  reportes:
+    directorio: ./output
+
+---
+spring:
+  config:
+    activate:
+      on-profile: demo
+  datasource:
+    # Ruta fija (~ = home del usuario) para que los BFFs de la semana 5
+    # puedan conectarse a la MISMA base que puebla este modulo batch,
+    # sin depender del working directory. AUTO_SERVER permite conexiones
+    # simultaneas de varias JVM (batch + 3 BFFs).
+    url: jdbc:h2:file:~/banco-xyz-data/banco-xyz;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    database-platform: org.hibernate.dialect.H2Dialect
+  h2:
+    console:
+      # Nota: este endpoint requiere spring-boot-starter-web (servidor embebido).
+      # Este proyecto no lo incluye (es una app batch, no web), por lo que la
+      # forma de inspeccionar la base H2 es vía una herramienta cliente JDBC
+      # (ej. el panel Database de IntelliJ) apuntando a la misma URL de abajo.
+      enabled: true
+      path: /h2-console
+
+logging:
+  level:
+    org.springframework.batch: INFO
+    com.bancoxyz.batch: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: oracle
+  datasource:
+    # ${TNS_ALIAS} es el alias de conexión definido en tnsnames.ora dentro
+    # del Wallet (ej. midb_high, midb_medium, midb_low, midb_tp, midb_tpurgent).
+    # ${TNS_ADMIN} es la carpeta local donde descomprimiste el Wallet
+    # descargado desde OCI (esa carpeta contiene tnsnames.ora, sqlnet.ora,
+    # cwallet.sso, etc.). Ambos se pasan como argumentos al ejecutar el jar,
+    # ver README sección "Ejecutar contra Oracle Cloud".
+    url: jdbc:oracle:thin:@${TNS_ALIAS}?TNS_ADMIN=${TNS_ADMIN:./wallet}
+    driver-class-name: oracle.jdbc.OracleDriver
+    username: ${DB_USER:ADMIN}
+    password: ${DB_PASSWORD}
+    hikari:
+      # Oracle es mucho más estricto que H2/MySQL/PostgreSQL con el
+      # aislamiento SERIALIZABLE (lanza ORA-08177 "can't serialize access"
+      # incluso sin concurrencia real). Se fuerza READ_COMMITTED, que es
+      # además el aislamiento por defecto y recomendado de Oracle.
+      transaction-isolation: TRANSACTION_READ_COMMITTED
+  batch:
+    jdbc:
+      # Spring Batch usa SERIALIZABLE por defecto al crear el JobInstance;
+      # en Oracle eso dispara ORA-08177. Ver:
+      # https://github.com/spring-projects/spring-batch/issues/4725
+      isolation-level-for-create: READ_COMMITTED
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    database-platform: org.hibernate.dialect.OracleDialect
+
+logging:
+  level:
+    org.springframework.batch: INFO
+    com.bancoxyz.batch: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: mysql
+  datasource:
+    url: jdbc:mysql://localhost:3306/banco_xyz?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:root}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    database-platform: org.hibernate.dialect.MySQLDialect
+
+logging:
+  level:
+    org.springframework.batch: INFO
+    com.bancoxyz.batch: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: postgres
+  datasource:
+    url: jdbc:postgresql://localhost:5432/banco_xyz
+    driver-class-name: org.postgresql.Driver
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+logging:
+  level:
+    org.springframework.batch: INFO
+    com.bancoxyz.batch: DEBUG

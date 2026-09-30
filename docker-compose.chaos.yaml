@@ -1,0 +1,18 @@
+services:
+  bff-web:
+    restart: "no"
+    environment:
+      TNS_ALIAS: alias_inexistente_para_pruebas_de_caos
+      SPRING_APPLICATION_JSON: >-
+        {"spring":
+          {"datasource":
+            {"hikari":
+              {"initializationFailTimeout":-1,
+               "connectionTimeout":3000,
+               "minimumIdle":0}},
+           "jpa":
+            {"hibernate":{"ddl-auto":"none"},
+             "properties":
+              {"hibernate":
+                {"boot":{"allow_jdbc_metadata_access":false},
+                 "temp":{"use_jdbc_metadata_defaults":false}}}}}}

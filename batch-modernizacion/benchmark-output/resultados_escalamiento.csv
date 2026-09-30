@@ -1,0 +1,9 @@
+tipo_prueba,parametro,valor,duracion_ms,estado
+transacciones,hilos_core_max,1/1,4547,OK
+transacciones,hilos_core_max,2/2,4432,OK
+transacciones,hilos_core_max,4/8,4234,OK
+transacciones,hilos_core_max,8/16,4361,OK
+cuentas-anuales,particiones,1,4943,OK
+cuentas-anuales,particiones,2,5022,OK
+cuentas-anuales,particiones,4,4578,OK
+cuentas-anuales,particiones,8,4552,OK

@@ -1,0 +1,454 @@
+{
+  "info": {
+    "name": "BE3 - Semana 8 - Banco XYZ (OAuth2 + Resilience4j + Kafka)",
+    "description": "Colección de la Exp3-S8. Verifica el flujo OAuth 2.0 client_credentials contra el auth-server, el consumo de los tres BFF como Resource Servers, la arquitectura de eventos con Kafka y el estado de los Circuit Breakers.\n\nUSO:\n1) Postman → Settings → General → 'SSL certificate verification' = OFF (los BFF usan HTTPS autofirmado).\n2) Ejecutar 'Token ...' de cada canal: el access token se guarda automáticamente en variables de colección.\n3) Las demás peticiones ya usan Bearer Token con esas variables.\n4) La carpeta 'Seguridad' contiene las pruebas negativas (sin token, token de otro canal, scope insuficiente).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "auth", "value": "http://localhost:9000" },
+    { "key": "base_web", "value": "https://localhost:8443" },
+    { "key": "base_movil", "value": "https://localhost:8444" },
+    { "key": "base_atm", "value": "https://localhost:8445" },
+    { "key": "notificaciones", "value": "http://localhost:8090" },
+    { "key": "cuenta", "value": "ACC-1002" },
+    { "key": "token_web", "value": "" },
+    { "key": "token_movil", "value": "" },
+    { "key": "token_atm", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. OAuth 2.0 - Authorization Server",
+      "item": [
+        {
+          "name": "JWK Set (clave pública)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('JWK Set disponible (200)', () => pm.response.to.have.status(200));",
+                  "pm.test('Publica al menos una clave RSA', () => {",
+                  "  const keys = pm.response.json().keys;",
+                  "  pm.expect(keys.length).to.be.above(0);",
+                  "  pm.expect(keys[0].kty).to.eql('RSA');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{auth}}/oauth2/jwks", "host": ["{{auth}}"], "path": ["oauth2", "jwks"] }
+          }
+        },
+        {
+          "name": "Token canal WEB (client_credentials)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Token emitido (200)', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json();",
+                  "pm.test('Tipo Bearer y scope web.read', () => {",
+                  "  pm.expect(d.token_type.toLowerCase()).to.eql('bearer');",
+                  "  pm.expect(d.scope).to.include('web.read');",
+                  "});",
+                  "pm.collectionVariables.set('token_web', d.access_token);",
+                  "console.log('Token WEB guardado, expira en ' + d.expires_in + ' s');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "bff-web-client", "type": "string" },
+                { "key": "password", "value": "web-secret", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "url": {
+              "raw": "{{auth}}/oauth2/token?grant_type=client_credentials&scope=web.read",
+              "host": ["{{auth}}"],
+              "path": ["oauth2", "token"],
+              "query": [
+                { "key": "grant_type", "value": "client_credentials" },
+                { "key": "scope", "value": "web.read" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Token canal MÓVIL (client_credentials)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Token emitido (200)', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json();",
+                  "pm.test('Scope mobile.read', () => pm.expect(d.scope).to.include('mobile.read'));",
+                  "pm.collectionVariables.set('token_movil', d.access_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "bff-mobile-client", "type": "string" },
+                { "key": "password", "value": "mobile-secret", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "url": {
+              "raw": "{{auth}}/oauth2/token?grant_type=client_credentials&scope=mobile.read",
+              "host": ["{{auth}}"],
+              "path": ["oauth2", "token"],
+              "query": [
+                { "key": "grant_type", "value": "client_credentials" },
+                { "key": "scope", "value": "mobile.read" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Token canal ATM (read + write)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Token emitido (200)', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json();",
+                  "pm.test('Scopes atm.read y atm.write', () => {",
+                  "  pm.expect(d.scope).to.include('atm.read');",
+                  "  pm.expect(d.scope).to.include('atm.write');",
+                  "});",
+                  "pm.test('Token de vida corta (<= 300 s)', () => pm.expect(d.expires_in).to.be.at.most(300));",
+                  "pm.collectionVariables.set('token_atm', d.access_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "bff-atm-client", "type": "string" },
+                { "key": "password", "value": "atm-secret", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "url": {
+              "raw": "{{auth}}/oauth2/token?grant_type=client_credentials&scope=atm.read atm.write",
+              "host": ["{{auth}}"],
+              "path": ["oauth2", "token"],
+              "query": [
+                { "key": "grant_type", "value": "client_credentials" },
+                { "key": "scope", "value": "atm.read atm.write" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Credenciales inválidas → rechazado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('Cliente no autenticado (401)', () => pm.expect(pm.response.code).to.be.oneOf([400, 401]));"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "bff-web-client", "type": "string" },
+                { "key": "password", "value": "secreto-incorrecto", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "url": {
+              "raw": "{{auth}}/oauth2/token?grant_type=client_credentials&scope=web.read",
+              "host": ["{{auth}}"],
+              "path": ["oauth2", "token"],
+              "query": [
+                { "key": "grant_type", "value": "client_credentials" },
+                { "key": "scope", "value": "web.read" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. BFF Web (8443)",
+      "item": [
+        {
+          "name": "Dashboard (agregados)",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK con scope web.read', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_web}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{base_web}}/api/web/dashboard", "host": ["{{base_web}}"], "path": ["api", "web", "dashboard"] }
+          }
+        },
+        {
+          "name": "Cuenta completa",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_web}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{base_web}}/api/web/cuentas/{{cuenta}}", "host": ["{{base_web}}"], "path": ["api", "web", "cuentas", "{{cuenta}}"] }
+          }
+        },
+        {
+          "name": "Estado de los Circuit Breakers",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Actuator responde (200)', () => pm.response.to.have.status(200));",
+                  "pm.test('Circuito bancoDatos CERRADO', () => {",
+                  "  const cbs = pm.response.json().circuitBreakers;",
+                  "  pm.expect(cbs.bancoDatos.state).to.eql('CLOSED');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_web}}/actuator/circuitbreakers", "host": ["{{base_web}}"], "path": ["actuator", "circuitbreakers"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. BFF Móvil (8444)",
+      "item": [
+        {
+          "name": "Cuentas (ligeras, paginadas)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK con scope mobile.read', () => pm.response.to.have.status(200));",
+                  "pm.test('Máximo 5 elementos', () => pm.expect(pm.response.json().length).to.be.at.most(5));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_movil}}", "type": "string" }] },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_movil}}/api/mobile/cuentas?page=0&size=3",
+              "host": ["{{base_movil}}"],
+              "path": ["api", "mobile", "cuentas"],
+              "query": [{ "key": "page", "value": "0" }, { "key": "size", "value": "3" }]
+            }
+          }
+        },
+        {
+          "name": "Resumen (home de la app)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_movil}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{base_movil}}/api/mobile/resumen", "host": ["{{base_movil}}"], "path": ["api", "mobile", "resumen"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. BFF Cajeros (8445) + evento Kafka",
+      "item": [
+        {
+          "name": "Saldo ANTES del retiro",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK con scope atm.read', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_atm}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{base_atm}}/api/atm/cuentas/{{cuenta}}/saldo", "host": ["{{base_atm}}"], "path": ["api", "atm", "cuentas", "{{cuenta}}", "saldo"] }
+          }
+        },
+        {
+          "name": "Retirar 500 (publica evento en Kafka)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Retiro aceptado (200)', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('Entrega comprobante', () => pm.expect(r).to.have.property('comprobante'));",
+                  "console.log('Comprobante: ' + r.comprobante + ' — debe aparecer en el topico banco.retiros');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_atm}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"monto\": 500\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{base_atm}}/api/atm/cuentas/{{cuenta}}/retiro", "host": ["{{base_atm}}"], "path": ["api", "atm", "cuentas", "{{cuenta}}", "retiro"] }
+          }
+        },
+        {
+          "name": "Saldo DESPUÉS del retiro",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_atm}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{base_atm}}/api/atm/cuentas/{{cuenta}}/saldo", "host": ["{{base_atm}}"], "path": ["api", "atm", "cuentas", "{{cuenta}}", "saldo"] }
+          }
+        },
+        {
+          "name": "Retiro con monto de alerta antifraude (1500)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Retiro aceptado (200)', () => pm.response.to.have.status(200));",
+                  "console.log('Debe generar ALERTA ANTIFRAUDE en notificaciones-service');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_atm}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"monto\": 1500\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{base_atm}}/api/atm/cuentas/{{cuenta}}/retiro", "host": ["{{base_atm}}"], "path": ["api", "atm", "cuentas", "{{cuenta}}", "retiro"] }
+          }
+        },
+        {
+          "name": "Retiro rechazado (supera tope)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Rechazado (422)', () => pm.response.to.have.status(422));",
+                  "pm.test('Motivo SUPERA_TOPE', () => pm.expect(pm.response.json().motivo).to.include('SUPERA_TOPE'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_atm}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"monto\": 999990\n}", "options": { "raw": { "language": "json" } } },
+            "url": { "raw": "{{base_atm}}/api/atm/cuentas/{{cuenta}}/retiro", "host": ["{{base_atm}}"], "path": ["api", "atm", "cuentas", "{{cuenta}}", "retiro"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Notificaciones (consumidor Kafka)",
+      "item": [
+        {
+          "name": "Eventos consumidos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Servicio disponible (200)', () => pm.response.to.have.status(200));",
+                  "pm.test('Ha consumido al menos un evento', () => pm.expect(pm.response.json().eventosProcesados).to.be.above(0));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{notificaciones}}/api/notificaciones", "host": ["{{notificaciones}}"], "path": ["api", "notificaciones"] }
+          }
+        },
+        {
+          "name": "Últimas notificaciones generadas",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{notificaciones}}/api/notificaciones/ultimas", "host": ["{{notificaciones}}"], "path": ["api", "notificaciones", "ultimas"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Seguridad - Autorización OAuth2",
+      "item": [
+        {
+          "name": "Sin token → rechazado",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('Rechazado sin token (401/403)', () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_web}}/api/web/dashboard", "host": ["{{base_web}}"], "path": ["api", "web", "dashboard"] }
+          }
+        },
+        {
+          "name": "Token MÓVIL contra BFF Web → scope insuficiente",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('Aislamiento por scope: rechazado (403)', () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_movil}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{base_web}}/api/web/dashboard", "host": ["{{base_web}}"], "path": ["api", "web", "dashboard"] }
+          }
+        },
+        {
+          "name": "Token WEB contra BFF ATM → scope insuficiente",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('Aislamiento por scope: rechazado (403)', () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token_web}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{base_atm}}/api/atm/cuentas/{{cuenta}}/saldo", "host": ["{{base_atm}}"], "path": ["api", "atm", "cuentas", "{{cuenta}}", "saldo"] }
+          }
+        },
+        {
+          "name": "Token alterado → firma inválida",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('Firma inválida rechazada (401)', () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "eyJhbGciOiJSUzI1NiJ9.token-falsificado.firma-invalida", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{base_movil}}/api/mobile/resumen", "host": ["{{base_movil}}"], "path": ["api", "mobile", "resumen"] }
+          }
+        }
+      ]
+    }
+  ]
+}

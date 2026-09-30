@@ -1,0 +1,132 @@
+spring:
+  application:
+    name: bff-web
+  # Igual que el modulo batch (S3): perfil "demo" (H2, cero instalacion) por
+  # defecto, y perfiles oracle / mysql / postgres para base relacional real.
+  # IMPORTANTE: el batch y los BFFs deben usar el MISMO perfil para compartir
+  # los datos.
+  profiles:
+    active: demo
+server:
+  port: 8443
+  ssl:
+    enabled: true
+    key-store: classpath:keystore-web.p12
+    key-store-type: PKCS12
+    key-store-password: bancoxyz123
+    key-alias: bff-web
+
+bff:
+  # Exp3-S8: coordenadas del servidor de autorizacion OAuth 2.0.
+  # El JwtDecoder se declara explicitamente en la clase de seguridad del
+  # canal (ver SecurityConfig), en lugar de depender de la autoconfiguracion
+  # de Spring Boot, que no se activa correctamente con el escaneo de
+  # paquetes acotado que usan los BFF.
+  oauth:
+    issuer: ${AUTH_ISSUER:http://localhost:9000}
+    jwks-uri: ${AUTH_JWKS:http://localhost:9000/oauth2/jwks}
+  channel: WEB
+
+# ------------------------------------------------------------------
+# Exp3-S8: tolerancia a fallos con Resilience4j
+# ------------------------------------------------------------------
+resilience4j:
+  circuitbreaker:
+    instances:
+      bancoDatos:
+        register-health-indicator: true
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10          # evalua las ultimas 10 llamadas
+        minimum-number-of-calls: 5       # minimo para empezar a evaluar
+        failure-rate-threshold: 50       # >=50% de fallos -> abre el circuito
+        wait-duration-in-open-state: 20s # tiempo abierto antes de probar
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+  retry:
+    instances:
+      bancoDatos:
+        max-attempts: 3
+        wait-duration: 500ms
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - org.springframework.dao.DataAccessResourceFailureException
+          - org.springframework.transaction.CannotCreateTransactionException
+          - java.sql.SQLException
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,circuitbreakers,circuitbreakerevents,retries,retryevents
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+
+---
+spring:
+  config:
+    activate:
+      on-profile: demo
+  datasource:
+    url: jdbc:h2:file:~/banco-xyz-data/banco-xyz;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    database-platform: org.hibernate.dialect.H2Dialect
+
+---
+spring:
+  config:
+    activate:
+      on-profile: oracle
+  datasource:
+    # Mismos parametros que el modulo batch: alias del tnsnames.ora del Wallet
+    # y carpeta local del Wallet descargado desde OCI.
+    url: jdbc:oracle:thin:@${TNS_ALIAS}?TNS_ADMIN=${TNS_ADMIN:./wallet}
+    driver-class-name: oracle.jdbc.OracleDriver
+    username: ${DB_USER:ADMIN}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    database-platform: org.hibernate.dialect.OracleDialect
+
+---
+spring:
+  config:
+    activate:
+      on-profile: mysql
+  datasource:
+    url: jdbc:mysql://localhost:3306/banco_xyz?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:root}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    database-platform: org.hibernate.dialect.MySQLDialect
+
+---
+spring:
+  config:
+    activate:
+      on-profile: postgres
+  datasource:
+    url: jdbc:postgresql://localhost:5432/banco_xyz
+    driver-class-name: org.postgresql.Driver
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    database-platform: org.hibernate.dialect.PostgreSQLDialect

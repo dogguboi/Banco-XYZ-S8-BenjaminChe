@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: auth-server
+
+server:
+  port: 9000
+
+# Emisor del token. En docker-compose se sobrescribe por variable de entorno
+# para que el issuer sea alcanzable desde los contenedores y desde el host.
+auth:
+  issuer: ${AUTH_ISSUER:http://localhost:9000}
+
+logging:
+  level:
+    org.springframework.security: INFO

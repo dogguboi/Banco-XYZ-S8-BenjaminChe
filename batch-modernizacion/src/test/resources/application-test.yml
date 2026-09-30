@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:banco-xyz-test;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: update
+    database-platform: org.hibernate.dialect.H2Dialect
+  batch:
+    job:
+      enabled: false
+    jdbc:
+      initialize-schema: always
+
+app:
+  reportes:
+    directorio: ./target/output-test
